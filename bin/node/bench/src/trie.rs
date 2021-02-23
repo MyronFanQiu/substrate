@@ -66,12 +66,12 @@ impl DatabaseSize {
 	/// Should be multiple of SAMPLE_SIZE!
 	fn keys(&self) -> usize {
 		let val = match *self {
-			Self::Empty => 200, // still need some keys to query
-			Self::Smallest => 1_000,
-			Self::Small => 10_000,
-			Self::Medium => 100_000,
-			Self::Large => 200_000,
-			Self::Huge => 1_000_000,
+			Self::Empty => 2_000_000, // still need some keys to query
+			Self::Smallest => 5_000_000,
+			Self::Small => 10_000_000,
+			Self::Medium => 20_000_000,
+			Self::Large => 50_000_000,
+			Self::Huge => 100_000_000,
 		};
 
 		assert_eq!(val % SAMPLE_SIZE, 0);
