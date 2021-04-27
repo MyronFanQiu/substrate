@@ -31,24 +31,37 @@ use crate::simple_trie::SimpleTrie;
 pub fn generate_trie(
 	db: Arc<dyn KeyValueDB>,
 	key_values: impl IntoIterator<Item=(Vec<u8>, Vec<u8>)>,
+	mut root: Hash,
+	is_first: bool
 ) -> Hash {
-	let mut root = Hash::default();
-
 	let (db, overlay) = {
 		let mut overlay = HashMap::new();
-		overlay.insert(
-			hex::decode("03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314").expect("null key is valid"),
-			Some(vec![0]),
-		);
+		if is_first {
+			overlay.insert(
+				hex::decode("03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314").expect("null key is valid"),
+				Some(vec![0]),
+			);
+		}
 		let mut trie = SimpleTrie { db, overlay: &mut overlay };
 		{
-			let mut trie_db = TrieDBMut::new(&mut trie, &mut root);
+			if is_first {
+				let mut trie_db = TrieDBMut::new(&mut trie, &mut root);
 
-			for (key, value) in key_values {
-				trie_db.insert(&key, &value).expect("trie insertion failed");
+				for (key, value) in key_values {
+					trie_db.insert(&key, &value).expect("trie insertion failed");
+				}
+	
+				trie_db.commit();
+			} else {
+				let mut trie_db = TrieDBMut::from_existing(&mut trie, &mut root).expect("Failed to create TrieDBMut");
+
+				for (key, value) in key_values {
+					trie_db.insert(&key, &value).expect("trie insertion failed");
+				}
+	
+				trie_db.commit();
 			}
 
-			trie_db.commit();
 		}
 		( trie.db, overlay )
 	};

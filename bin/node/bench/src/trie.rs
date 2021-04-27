@@ -37,6 +37,7 @@ use crate::{
 
 pub const SAMPLE_SIZE: usize = 100;
 pub const TEST_WRITE_SIZE: usize = 128;
+pub const PARTIAL_SIZE: usize = 1_000_000;
 
 pub type KeyValue = (Vec<u8>, Vec<u8>);
 pub type KeyValues = Vec<KeyValue>;
@@ -104,24 +105,17 @@ pub struct TrieReadBenchmark {
 	database_type: DatabaseType,
 }
 
-impl core::BenchmarkDescription for TrieReadBenchmarkDescription {
-	fn path(&self) -> Path {
-		let mut path = Path::new(&["trie", "read"]);
-		path.push(&format!("{}", self.database_size));
-		path
-	}
-
-	fn setup(self: Box<Self>) -> Box<dyn core::Benchmark> {
-		let mut database = TempDatabase::new();
-
+impl TrieReadBenchmarkDescription {
+	fn partial_setup(database: &mut TempDatabase, partial_size: usize, root: Hash, database_type: DatabaseType, is_first: bool) -> (Hash, KeyValues, KeyValues)
+	{
 		let mut rng = rand::thread_rng();
 		let warmup_prefix = KUSAMA_STATE_DISTRIBUTION.key(&mut rng);
 
 		let mut key_values = KeyValues::new();
 		let mut warmup_keys = KeyValues::new();
 		let mut query_keys = KeyValues::new();
-		let every_x_key = self.database_size.keys() / SAMPLE_SIZE;
-		for idx in 0..self.database_size.keys() {
+		let every_x_key = partial_size / SAMPLE_SIZE;
+		for idx in 0..partial_size {
 			let kv = (
 				KUSAMA_STATE_DISTRIBUTION.key(&mut rng).to_vec(),
 				KUSAMA_STATE_DISTRIBUTION.value(&mut rng),
@@ -142,10 +136,42 @@ impl core::BenchmarkDescription for TrieReadBenchmarkDescription {
 		assert_eq!(warmup_keys.len(), SAMPLE_SIZE);
 		assert_eq!(query_keys.len(), SAMPLE_SIZE);
 
-		let root = generate_trie(
-			database.open(self.database_type),
+		let new_root = generate_trie(
+			database.open(database_type),
 			key_values,
+			root,
+			is_first
 		);
+
+		(new_root, warmup_keys, query_keys)
+	}
+}
+
+impl core::BenchmarkDescription for TrieReadBenchmarkDescription {
+	fn path(&self) -> Path {
+		let mut path = Path::new(&["trie", "read"]);
+		path.push(&format!("{}", self.database_size));
+		path
+	}
+
+	fn setup(self: Box<Self>) -> Box<dyn core::Benchmark> {
+		let mut database = TempDatabase::new();
+		let mut root = Hash::default();
+		let mut warmup_keys = KeyValues::new();
+		let mut query_keys = KeyValues::new();
+
+		let loop_count = self.database_size.keys() / PARTIAL_SIZE;
+		for index in 0..loop_count {
+			println!("start index {}", index);
+			let mut is_first = false;
+			if index == 0 {
+				is_first = true;
+			}
+			let (new_root, mut partial_warmup_keys, mut partial_query_keys) = Self::partial_setup(&mut database, PARTIAL_SIZE, root.clone(), self.database_type, is_first);
+			warmup_keys.append(&mut partial_warmup_keys);
+			query_keys.append(&mut partial_query_keys);
+			root = new_root;
+		}
 
 		Box::new(TrieReadBenchmark {
 			database,
@@ -218,24 +244,16 @@ pub struct TrieWriteBenchmarkDescription {
 	pub database_type: DatabaseType,
 }
 
-
-impl core::BenchmarkDescription for TrieWriteBenchmarkDescription {
-	fn path(&self) -> Path {
-		let mut path = Path::new(&["trie", "write"]);
-		path.push(&format!("{}", self.database_size));
-		path
-	}
-
-	fn setup(self: Box<Self>) -> Box<dyn core::Benchmark> {
-		let mut database = TempDatabase::new();
-
+impl TrieWriteBenchmarkDescription {
+	fn partial_setup(database: &mut TempDatabase, partial_size: usize, root: Hash, database_type: DatabaseType, is_first: bool) -> (Hash, KeyValues)
+	{
 		let mut rng = rand::thread_rng();
 		let warmup_prefix = KUSAMA_STATE_DISTRIBUTION.key(&mut rng);
 
 		let mut key_values = KeyValues::new();
 		let mut warmup_keys = KeyValues::new();
-		let every_x_key = self.database_size.keys() / SAMPLE_SIZE;
-		for idx in 0..self.database_size.keys() {
+		let every_x_key = partial_size / SAMPLE_SIZE;
+		for idx in 0..partial_size {
 			let kv = (
 				KUSAMA_STATE_DISTRIBUTION.key(&mut rng).to_vec(),
 				KUSAMA_STATE_DISTRIBUTION.value(&mut rng),
@@ -253,10 +271,41 @@ impl core::BenchmarkDescription for TrieWriteBenchmarkDescription {
 
 		assert_eq!(warmup_keys.len(), SAMPLE_SIZE);
 
-		let root = generate_trie(
-			database.open(self.database_type),
+		let new_root = generate_trie(
+			database.open(database_type),
 			key_values,
+			root,
+			is_first
 		);
+
+		(new_root, warmup_keys)
+	}
+}
+
+
+impl core::BenchmarkDescription for TrieWriteBenchmarkDescription {
+	fn path(&self) -> Path {
+		let mut path = Path::new(&["trie", "write"]);
+		path.push(&format!("{}", self.database_size));
+		path
+	}
+
+	fn setup(self: Box<Self>) -> Box<dyn core::Benchmark> {
+		let mut database = TempDatabase::new();
+		let mut root = Hash::default();
+		let mut warmup_keys = KeyValues::new();
+
+		let loop_count = self.database_size.keys() / PARTIAL_SIZE;
+		for index in 0..loop_count {
+			println!("start index {}", index);
+			let mut is_first = false;
+			if index == 0 {
+				is_first = true;
+			}
+			let (new_root, mut partial_warmup_keys) = Self::partial_setup(&mut database, PARTIAL_SIZE, root.clone(), self.database_type, is_first);
+			warmup_keys.append(&mut partial_warmup_keys);
+			root = new_root;
+		}
 
 		Box::new(TrieWriteBenchmark {
 			database,
