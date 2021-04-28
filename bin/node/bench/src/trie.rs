@@ -235,7 +235,7 @@ impl core::Benchmark for TrieReadBenchmark {
 			std::thread::park_timeout(std::time::Duration::from_secs(1));
 		}
 
-		elapsed / (SAMPLE_SIZE as u32)
+		elapsed / (self.query_keys.len() as u32)
 	}
 }
 
