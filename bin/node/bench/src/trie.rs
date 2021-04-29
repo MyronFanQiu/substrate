@@ -110,16 +110,20 @@ impl TrieReadBenchmarkDescription {
 	{
 		let mut rng = rand::thread_rng();
 		let warmup_prefix = KUSAMA_STATE_DISTRIBUTION.key(&mut rng);
+		let fixed_prefix = KUSAMA_STATE_DISTRIBUTION.key(&mut rng);
 
 		let mut key_values = KeyValues::new();
 		let mut warmup_keys = KeyValues::new();
 		let mut query_keys = KeyValues::new();
 		let every_x_key = partial_size / SAMPLE_SIZE;
 		for idx in 0..partial_size {
-			let kv = (
+			let mut kv = (
 				KUSAMA_STATE_DISTRIBUTION.key(&mut rng).to_vec(),
 				KUSAMA_STATE_DISTRIBUTION.value(&mut rng),
 			);
+			if is_first {
+				kv.0[0..16].copy_from_slice(&fixed_prefix[0..16]);
+			}
 			if idx % every_x_key == 0 {
 				// warmup keys go to separate tree with high prob
 				let mut actual_warmup_key = warmup_prefix.clone();
@@ -167,9 +171,12 @@ impl core::BenchmarkDescription for TrieReadBenchmarkDescription {
 			if index == 0 {
 				is_first = true;
 			}
-			let (new_root, mut partial_warmup_keys, mut partial_query_keys) = Self::partial_setup(&mut database, PARTIAL_SIZE, root.clone(), self.database_type, is_first);
+			let (new_root, mut partial_warmup_keys, partial_query_keys) = Self::partial_setup(&mut database, PARTIAL_SIZE, root.clone(), self.database_type, is_first);
 			warmup_keys.append(&mut partial_warmup_keys);
-			query_keys.append(&mut partial_query_keys);
+			if is_first {
+				query_keys = partial_query_keys;
+			}
+			// query_keys.append(&mut partial_query_keys);
 			root = new_root;
 		}
 
